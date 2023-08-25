@@ -14,7 +14,7 @@ async fn main() -> anyhow::Result<()> {
 
 
     let pvs: Api<PersistentVolume> = Api::all(client);
-    for pv in pvs.list(&ListParams::default().fields(("name=oasgen")).await? {
+    for pv in pvs.list(&ListParams::default().fields((""))).await? {
         println!("Found Pv: {}", pv.name_any());
     }
 

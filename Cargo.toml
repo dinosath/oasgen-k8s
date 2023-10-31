@@ -3,7 +3,11 @@ name = "oasgen-k8s"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[profile.release]
+opt-level = 3
+lto=true
+panic="abort"
+
 
 [dependencies]
 kube = { version = "0.85.0", features = ["runtime", "derive"] }

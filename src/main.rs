@@ -1,3 +1,7 @@
+#[macro_use]
+extern crate enum_display_derive;
+use std::fmt::Display;
+
 use k8s_openapi::api::batch::v1::Job;
 use k8s_openapi::api::core::v1::{PersistentVolume, Pod};
 
@@ -9,36 +13,44 @@ use kube::{
 use tracing::info;
 
 use axum::{
-    extract::{rejection::FormRejection, Form, FromRequest},
+    extract,
     http::StatusCode,
     response::{Html, IntoResponse, Response},
     routing::{get, post},
-    Json, Router,
+    Router,
 };
+use tracing_subscriber::fmt::format;
 
 use std::net::SocketAddr;
-use validator::{Validate,ValidationError, ValidationErrors};
+use validator::{Validate, ValidationError, ValidationErrors};
 
 use serde::{Deserialize, Serialize};
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct JobBuilderRequest {
+pub struct GeneratorConfig {
     pub openapis: Vec<Schema>,
     pub json_schemas: Vec<Schema>,
     pub template: Template,
 }
 
-impl Validate for JobBuilderRequest {
+impl Validate for GeneratorConfig {
     fn validate(&self) -> Result<(), validator::ValidationErrors> {
         let openapi_is_empty = self.openapis.len() == 0;
-        if openapi_is_empty && self.json_schemas.len()==0 {
+        if openapi_is_empty && self.json_schemas.len() == 0 {
             let mut errors = ValidationErrors::new();
-            let erroneous_field = if openapi_is_empty {"openapis"} else {"jsonSchemas"};
-            errors.add(erroneous_field,ValidationError::new("must provide at least one openapi url or one jsonschema url"));
+            let erroneous_field = if openapi_is_empty {
+                "openapis"
+            } else {
+                "jsonSchemas"
+            };
+            errors.add(
+                erroneous_field,
+                ValidationError::new("must provide at least one openapi url or one jsonschema url"),
+            );
             return Err(errors);
         }
-        Ok(())    
+        Ok(())
     }
 }
 
@@ -49,11 +61,13 @@ pub struct Schema {
     pub authentication: Option<String>,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize, Validate)]
 #[serde(rename_all = "camelCase")]
 pub struct Template {
+    #[validate(url)]
     pub url: String,
-    pub tag: Tag,
+    pub tag: Option<Tag>,
+    pub path: String
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -73,20 +87,25 @@ impl Default for Tag {
     }
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize, Display)]
 pub enum Type {
     #[default]
-    Branch,
-    Tag,
-    Revision,
+    branch,
+    tag,
+    revision,
 }
 
-async fn create_job(Json(payload): Json<JobBuilderRequest>) -> Result<(), AppError> {
+async fn create_job(extract::Json(generatorConfig): extract::Json<GeneratorConfig>) -> Result<(), AppError> {
     let client = Client::try_default().await?;
 
     let jobs: Api<Job> = Api::default_namespaced(client);
     let name = "oasgen-";
+
+    let tag_substring = match generatorConfig.template.tag { 
+        Some(tag) => format!("--{} {}",tag.tag_type,tag.name),
+        None =>"".to_string(),
+    };
+    let add_registry_chain = format!("registry add common {} {}",generatorConfig.template.url,tag_substring);
 
     let data = serde_json::from_value(serde_json::json!({
         "apiVersion": "batch/v1",
@@ -112,7 +131,7 @@ async fn create_job(Json(payload): Json<JobBuilderRequest>) -> Result<(), AppErr
                     "initContainers": [{
                         "name": "schema-tools",
                         "image": "ghcr.io/dinosath/schema-tools:master",
-                        "args":["chain","-vvvv","-c",format!("registry add common https://github.com/dinosath/schema-tools-templates.git --branch master"),"-c","validate openapi https://petstore3.swagger.io/api/v3/openapi.json","-c","codegen openapi - --template common::rust/server-axum/ --target-dir /data/ -o namespace=client1 -o clientName=Client1"
+                        "args":["chain","-vvvv","-c",add_registry_chain,"-c",format!("validate openapi {}",generatorConfig.openapis.get(0).unwrap().url),"-c",format!("codegen openapi - --template common::{} --target-dir /data/ -o namespace=client1 -o clientName=Client1",generatorConfig.template.path)
                         ],
                         "volumeMounts":[
                             {

@@ -1,5 +1,6 @@
 #[macro_use]
 extern crate enum_display_derive;
+use std::default;
 use std::fmt::Display;
 
 use k8s_openapi::api::batch::v1::Job;
@@ -61,13 +62,25 @@ pub struct Schema {
     pub authentication: Option<String>,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize, Validate)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Validate)]
 #[serde(rename_all = "camelCase")]
 pub struct Template {
     #[validate(url)]
     pub url: String,
     pub tag: Option<Tag>,
-    pub path: String
+    pub path: String,
+    pub image: String,
+}
+
+impl Default for Template {
+    fn default() -> Self {
+        Template {
+            url: "https://github.com/dinosath/schema-tools-templates.git".to_string(),
+            tag: Some(Tag::default()),
+            path: "java/server-quarkus".to_string(),
+            image: "ghcr.io/dinosath/schema-tools:master".to_string()
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -95,18 +108,24 @@ pub enum Type {
     revision,
 }
 
-async fn create_job(extract::Json(generatorConfig): extract::Json<GeneratorConfig>) -> Result<(), AppError> {
+async fn create_job(
+    extract::Json(generatorConfig): extract::Json<GeneratorConfig>,
+) -> Result<(), AppError> {
     let client = Client::try_default().await?;
 
     let jobs: Api<Job> = Api::default_namespaced(client);
     let name = "oasgen-";
 
-    let tag_substring = match generatorConfig.template.tag { 
-        Some(tag) => format!("--{} {}",tag.tag_type,tag.name),
-        None =>"".to_string(),
+    let tag_substring = match generatorConfig.template.tag {
+        Some(tag) => format!("--{} {}", tag.tag_type, tag.name),
+        None => "".to_string(),
     };
-    let add_registry_chain = format!("registry add common {} {}",generatorConfig.template.url,tag_substring);
+    let add_registry_chain = format!(
+        "registry add common {} {}",
+        generatorConfig.template.url, tag_substring
+    );
 
+    
     let data = serde_json::from_value(serde_json::json!({
         "apiVersion": "batch/v1",
         "kind": "Job",
@@ -130,8 +149,8 @@ async fn create_job(extract::Json(generatorConfig): extract::Json<GeneratorConfi
                     ],
                     "initContainers": [{
                         "name": "schema-tools",
-                        "image": "ghcr.io/dinosath/schema-tools:master",
-                        "args":["chain","-vvvv","-c",add_registry_chain,"-c",format!("validate openapi {}",generatorConfig.openapis.get(0).unwrap().url),"-c",format!("codegen openapi - --template common::{} --target-dir /data/ -o namespace=client1 -o clientName=Client1",generatorConfig.template.path)
+                        "image": generatorConfig.template.image,
+                        "args":["chain","-vvvv","-c",add_registry_chain,"-c",format!("validate openapi {}",generatorConfig.openapis.get(0).unwrap().url),"-c",format!("codegen openapi - --template common::{} --target-dir /data/ -o package=com.test",generatorConfig.template.path)
                         ],
                         "volumeMounts":[
                             {

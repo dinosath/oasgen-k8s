@@ -38,7 +38,6 @@ pub struct GeneratorConfig {
     pub after_build_steps: Vec<AfterBuildSteps>,
 }
 
-
 impl Validate for GeneratorConfig {
     fn validate(&self) -> Result<(), validator::ValidationErrors> {
         let openapi_is_empty = self.openapis.len() == 0;
@@ -134,7 +133,7 @@ async fn create_job(
 ) -> Result<(), AppError> {
     let client = Client::try_default().await?;
 
-let AfterBuildSteps = AfterBuildSteps::default();
+    let AfterBuildSteps = AfterBuildSteps::default();
 
     let jobs: Api<Job> = Api::default_namespaced(client);
     let name = "oasgen-job-";

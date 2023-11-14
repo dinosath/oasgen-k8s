@@ -33,7 +33,11 @@ pub struct GeneratorConfig {
     pub openapis: Vec<Schema>,
     pub json_schemas: Vec<Schema>,
     pub template: Template,
+    #[serde(alias = "after-build-steps")]
+    #[serde(default)]
+    pub after_build_steps: Vec<AfterBuildSteps>,
 }
+
 
 impl Validate for GeneratorConfig {
     fn validate(&self) -> Result<(), validator::ValidationErrors> {
@@ -72,13 +76,30 @@ pub struct Template {
     pub image: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Validate)]
+pub struct AfterBuildSteps {
+    pub name: String,
+    pub args: Vec<String>,
+    pub image: String,
+}
+
+impl Default for AfterBuildSteps {
+    fn default() -> Self {
+        AfterBuildSteps {
+            name: String::from("maven"),
+            args: vec![String::from("mvn"), String::from("package")],
+            image: String::from("3-eclipse-temurin-21-alpine"),
+        }
+    }
+}
+
 impl Default for Template {
     fn default() -> Self {
         Template {
             url: "https://github.com/dinosath/schema-tools-templates.git".to_string(),
             tag: Some(Tag::default()),
             path: "java/server-quarkus".to_string(),
-            image: "ghcr.io/dinosath/schema-tools:master".to_string()
+            image: "ghcr.io/dinosath/schema-tools:master".to_string(),
         }
     }
 }
@@ -113,8 +134,10 @@ async fn create_job(
 ) -> Result<(), AppError> {
     let client = Client::try_default().await?;
 
+let AfterBuildSteps = AfterBuildSteps::default();
+
     let jobs: Api<Job> = Api::default_namespaced(client);
-    let name = "oasgen-";
+    let name = "oasgen-job-";
 
     let tag_substring = match generatorConfig.template.tag {
         Some(tag) => format!("--{} {}", tag.tag_type, tag.name),
@@ -125,7 +148,6 @@ async fn create_job(
         generatorConfig.template.url, tag_substring
     );
 
-    
     let data = serde_json::from_value(serde_json::json!({
         "apiVersion": "batch/v1",
         "kind": "Job",
@@ -158,7 +180,20 @@ async fn create_job(
                                 "mountPath": "/data"
                             }
                           ]
-                    }],
+                    },
+                    {
+                        "name":"mvn-package",
+                        "volumeMounts":[
+                            {
+                                "name": "shared-data",
+                                "mountPath": "/data"
+                            }
+                        ],
+                        "workingDir": "/data",
+                        "image":"maven:3-eclipse-temurin-21-alpine",
+                        "args":["mvn","package"]
+                    }
+                    ],
                     "containers": [{
                         "name": "alpine",
                         "image": "alpine:latest",

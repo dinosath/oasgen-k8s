@@ -158,6 +158,7 @@ let AfterBuildSteps = AfterBuildSteps::default();
             }
         },
         "spec": {
+            "backoffLimit":"0",
             "template": {
                 "metadata": {
                     "name": "schema-tools"

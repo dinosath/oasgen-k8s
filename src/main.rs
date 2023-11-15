@@ -157,7 +157,7 @@ async fn create_job(
             }
         },
         "spec": {
-            "backoffLimit":"0",
+            "backoffLimit":0,
             "template": {
                 "metadata": {
                     "name": "schema-tools"

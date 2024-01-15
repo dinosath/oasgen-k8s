@@ -1,0 +1,19 @@
+{
+    "title": "article",
+    "properties": {
+        "title": {
+            "type": [
+                "string",
+                "null"
+            ]
+        },
+        "pid": {
+            "type": "string",
+            "format": "uuid"
+        },
+
+        "content": {
+            "type": "text"
+        }
+    }
+}
